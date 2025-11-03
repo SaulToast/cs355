@@ -365,6 +365,8 @@ def displayCarHelper():
 
 def handleInputs(pressed):
 	global totalTime
+	global done
+	speed = 0.5
 	if pressed[pygame.K_w]:
 		cam.position[0] -= cam.forward[0] * speed
 		cam.position[1] -= cam.forward[1] * speed
@@ -401,6 +403,8 @@ def handleInputs(pressed):
 	if pressed[pygame.K_h]:
 		cam.reset()
 		totalTime = 0
+	if pressed[pygame.K_ESCAPE]:
+		done=True
 
 # Initialize the game engine
 pygame.init()
@@ -425,7 +429,8 @@ done = False
 clock = pygame.time.Clock()
 start = Point(0.0,0.0)
 end = Point(0.0,0.0)
-global totalTime
+
+# time is global so handleInputs can reset it
 totalTime = 0
 
 #initialize camera and matrix stacks
@@ -441,6 +446,8 @@ while not done:
 	# This limits the while loop to a max of 100 times per second.
 	# Leave this out and we will use all CPU we can.
 	deltaMs = clock.tick(100)
+	
+	# not actually seconds but this makes the car animation the right speed
 	deltaSecs = deltaMs / 10
 	totalTime += deltaSecs
 
@@ -455,10 +462,7 @@ while not done:
 			done=True
 			
 	pressed = pygame.key.get_pressed()
-
-	speed = 0.5
 	handleInputs(pressed)
-        
 
 	#Viewer Code#
 	#####################################################################
