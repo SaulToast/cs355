@@ -1,6 +1,5 @@
 # Import a library of functions called 'pygame'
 import pygame
-from math import pi
 import numpy as np
 
 class Camera:
@@ -275,21 +274,34 @@ def perspective(fov, aspect, near, far):
 
 def ndcToScreen(ndc):
     x = int((ndc[0] + 1) * 0.5 * DISPLAY_WIDTH)
-    y = int((1 - (ndc[1] + 1) * 0.5) * DISPLAY_HEIGHT)  # flip Y
+    y = int((1 - (ndc[1] + 1) * 0.5) * DISPLAY_HEIGHT)
     return (x, y)
 
-def clipCheck(vertex):
-	w = vertex[3]
-	return (-w <= vertex[0] <= w) and (-w <= vertex[1] <= w) and (-w <= vertex[2] <= w)
+def clipCheck(vStart, vEnd):
+	wStart = vStart[3]
+	wEnd = vEnd[3]
+	if vStart[2] < 0 or vEnd[2] < 0:
+		return False
+	if (vStart[0] < -wStart and vEnd[0] < -wEnd) or (vStart[0] > wStart and vEnd[0] > wEnd):
+		return False
+	if (vStart[1] < -wStart and vEnd[1] < -wEnd) or (vStart[1] > wStart and vEnd[1] > wEnd):
+		return False
+	if (vStart[2] > wStart and vEnd[2] > wEnd):
+		return False
+	return True
 
 def drawWithPush(drawFunc, *transforms):
-    modelViewStack.push()
-    for t in transforms:
-        modelViewStack.multiplyMatrix(t)
-    drawFunc()
-    modelViewStack.pop()
+	"""takes in a function and any amount of transformation matrices.
+		this function can be nested for heirarchical tranformations"""
+	modelViewStack.push()
+	for t in transforms:
+		modelViewStack.multiplyMatrix(t)
+	drawFunc()
+	modelViewStack.pop()
 
 def drawObject(lines, color):
+	"""takes in a list of 3Dlines and a color. 
+	Computes the vertex transformations from the projectionMatrixStack and the modelViewMatrixStack"""
 	for s in lines:
 		start_h = np.array([s.start.x, s.start.y, s.start.z, 1.0])
 		end_h = np.array([s.end.x, s.end.y, s.end.z, 1.0])
@@ -300,7 +312,7 @@ def drawObject(lines, color):
 		start_clip = projectionStack.top @ start_cam
 		end_clip = projectionStack.top @ end_cam
 
-		if clipCheck(start_clip) and clipCheck(end_clip):
+		if clipCheck(start_clip, end_clip):
 			start_ndc = start_clip[:3] / start_clip[3]
 			end_ndc = end_clip[:3] / end_clip[3]
 
@@ -350,6 +362,46 @@ def displayCarHelper():
     drawWithPush(lambda: drawObject(loadTire(), GREEN),
                  translate(-2, 0, -2),
                  rotateZ(-totalTime * 1.3))
+
+def handleInputs(pressed):
+	global totalTime
+	if pressed[pygame.K_w]:
+		cam.position[0] -= cam.forward[0] * speed
+		cam.position[1] -= cam.forward[1] * speed
+		cam.position[2] -= cam.forward[2] * speed
+	if pressed[pygame.K_s]:
+		cam.position[0] += cam.forward[0] * speed
+		cam.position[1] += cam.forward[1] * speed
+		cam.position[2] += cam.forward[2] * speed
+	if pressed[pygame.K_a]:
+		cam.position[0] += cam.right[0] * speed
+		cam.position[1] += cam.right[1] * speed
+		cam.position[2] += cam.right[2] * speed
+	if pressed[pygame.K_d]:
+		cam.position[0] -= cam.right[0] * speed
+		cam.position[1] -= cam.right[1] * speed
+		cam.position[2] -= cam.right[2] * speed
+	if pressed[pygame.K_e]:
+		cam.rotY += 1
+	if pressed[pygame.K_q]:
+		cam.rotY -= 1
+    # added forward and backward tilt to move around scene better
+	if pressed[pygame.K_t]:
+		cam.rotX -= 1
+	if pressed[pygame.K_g]:
+		cam.rotX += 1
+	if pressed[pygame.K_f]:
+		cam.position[0] += cam.up[0] * speed
+		cam.position[1] += cam.up[1] * speed
+		cam.position[2] += cam.up[2] * speed
+	if pressed[pygame.K_r]:
+		cam.position[0] -= cam.up[0] * speed
+		cam.position[1] -= cam.up[1] * speed
+		cam.position[2] -= cam.up[2] * speed
+	if pressed[pygame.K_h]:
+		cam.reset()
+		totalTime = 0
+
 # Initialize the game engine
 pygame.init()
  
@@ -359,10 +411,10 @@ WHITE = (255, 255, 255)
 BLUE =  (  0,   0, 255)
 GREEN = (  0, 255,   0)
 RED =   (255,   0,   0)
-DISPLAY_HEIGHT = 512
-DISPLAY_WIDTH = 512
 
 # Set the height and width of the screen
+DISPLAY_HEIGHT = 512
+DISPLAY_WIDTH = 512
 size = [DISPLAY_HEIGHT, DISPLAY_WIDTH]
 screen = pygame.display.set_mode(size)
 
@@ -373,13 +425,15 @@ done = False
 clock = pygame.time.Clock()
 start = Point(0.0,0.0)
 end = Point(0.0,0.0)
+global totalTime
+totalTime = 0
 
+#initialize camera and matrix stacks
 cam = Camera(position=[-50, -5, -24], rotY=-70)
 projectionStack = MatrixStack()
 persMatrix  = perspective(45, DISPLAY_WIDTH/DISPLAY_HEIGHT, 0.1, 100)
 projectionStack.multiplyMatrix(persMatrix)
 modelViewStack = MatrixStack()
-totalTime = 0
 
 #Loop until the user clicks the close button.
 while not done:
@@ -403,44 +457,14 @@ while not done:
 	pressed = pygame.key.get_pressed()
 
 	speed = 0.5
-	if pressed[pygame.K_w]:
-		cam.position[0] -= cam.forward[0] * speed
-		cam.position[1] -= cam.forward[1] * speed
-		cam.position[2] -= cam.forward[2] * speed
-	if pressed[pygame.K_s]:
-		cam.position[0] += cam.forward[0] * speed
-		cam.position[1] += cam.forward[1] * speed
-		cam.position[2] += cam.forward[2] * speed
-	if pressed[pygame.K_a]:
-		cam.position[0] += cam.right[0] * speed
-		cam.position[1] += cam.right[1] * speed
-		cam.position[2] += cam.right[2] * speed
-	if pressed[pygame.K_d]:
-		cam.position[0] -= cam.right[0] * speed
-		cam.position[1] -= cam.right[1] * speed
-		cam.position[2] -= cam.right[2] * speed
-	if pressed[pygame.K_e]:
-		cam.rotY += 1
-	if pressed[pygame.K_q]:
-		cam.rotY -= 1
-    # added forward and backward tilt to move around scene better
-	if pressed[pygame.K_f]:
-		cam.position[0] += cam.up[0] * speed
-		cam.position[1] += cam.up[1] * speed
-		cam.position[2] += cam.up[2] * speed
-	if pressed[pygame.K_r]:
-		cam.position[0] -= cam.up[0] * speed
-		cam.position[1] -= cam.up[1] * speed
-		cam.position[2] -= cam.up[2] * speed
-	if pressed[pygame.K_h]:
-		cam.reset()
-		totalTime = 0
+	handleInputs(pressed)
         
 
 	#Viewer Code#
 	#####################################################################
 
 	modelViewStack.loadIdentity()
+	modelViewStack.multiplyMatrix(rotateX(cam.rotX))
 	modelViewStack.multiplyMatrix(rotateY(cam.rotY))
 	modelViewStack.multiplyMatrix(translate(cam.position[0], cam.position[1], cam.position[2]))
 
