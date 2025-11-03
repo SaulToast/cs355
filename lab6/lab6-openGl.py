@@ -236,7 +236,6 @@ def drawWithPush(drawFunc, *transforms):
     Takes in a draw function and any amount of transformations as lambda functions.
     Pushes the current matrix, Applies Transformations, Calls the draw function, Pops the Matrix.
     """
-
     glPushMatrix()
     for t in transforms:
         t()

@@ -3,11 +3,52 @@ import pygame
 from math import pi
 import numpy as np
 
+class Camera:
+
+    def __init__(self, position = None, rotY = 0, rotX = 0):
+        if position is None:
+            position = [0,0,0]
+
+        self.position = position[:]
+        self.defaultPosition = position[:]
+        self.rotY = rotY
+        self.defaultRotY = rotY
+        self.rotX = rotX
+        self.defaultRotX = rotX
+    
+    def reset(self):
+        self.position = self.defaultPosition[:]
+        self.rotY = self.defaultRotY
+        self.rotX = self.defaultRotX
+
+    @property
+    def forward(self):
+        rotXRads = np.radians(self.rotX)
+        rotYRads = np.radians(self.rotY)
+        x = np.sin(rotYRads) * np.cos(rotXRads)
+        y = np.sin(rotXRads)
+        z = -np.cos(rotYRads) * np.cos(rotXRads)
+        return [x, y, z]
+    
+    @property
+    def right(self):
+        rotYRads = np.radians(self.rotY)
+        x = np.cos(rotYRads)
+        y = 0
+        z = np.sin(rotYRads)
+        return [x, y, z]
+    
+    @property
+    def up(self):
+        r = self.right
+        f = self.forward
+        return np.cross(np.array(r), np.array(f))
+
 class MatrixStack:
 	def __init__(self):
 		self.stack = [np.identity(4)]
 		
-	def load_identity(self):
+	def loadIdentity(self):
 		self.stack[-1] = np.identity(4)
 		
 	def push(self):
@@ -17,8 +58,12 @@ class MatrixStack:
 		if len(self.stack) > 1:
 			self.stack.pop()
 			
-	def multiply_matrix(self, matrix):
+	def multiplyMatrix(self, matrix):
 		self.stack[-1] = self.stack[-1] @ matrix
+	
+	@property
+	def top(self):
+		return self.stack[-1]
 	
 class Point:
 	def __init__(self,x,y):
@@ -183,11 +228,128 @@ def loadTire():
     return tire
 
 def translate(x, y, z):
-	pass
-def rotate(angle):
-	pass
-def scale(x, y, z):
-	pass
+	m = np.identity(4)
+	m[0, 3] = x
+	m[1, 3] = y
+	m[2, 3] = z
+	return m
+
+def rotateY(angle):
+	theta = np.radians(angle)
+	c = np.cos(theta)
+	s = np.sin(theta)
+	return np.array([
+		[c, 0, s, 0],
+		[0,1,0,0],
+		[-s, 0, c, 0],
+		[0,0,0,1]
+	])
+def rotateX(angle):
+	theta = np.radians(angle)
+	c = np.cos(theta)
+	s = np.sin(theta)
+	return np.array([
+		[1, 0, 0, 0],
+		[0,c,-s,0],
+		[0, s, c, 0],
+		[0,0,0,1]
+	])
+def rotateZ(angle):
+	theta = np.radians(angle)
+	c = np.cos(theta)
+	s = np.sin(theta)
+	return np.array([
+		[c, -s, 0, 0],
+		[s,c,0,0],
+		[0, 0, 1, 0],
+		[0,0,0,1]
+	])
+
+def perspective(fov, aspect, near, far):
+	f = 1/np.tan(np.radians(fov) / 2)
+	return np.array([
+		[f/aspect, 0, 0, 0], 
+		[0, f, 0, 0], 
+		[0, 0, (far+near)/(near-far), (2*far*near)/(near-far)], 
+		[0, 0, -1, 0]])
+
+def ndcToScreen(ndc):
+    x = int((ndc[0] + 1) * 0.5 * DISPLAY_WIDTH)
+    y = int((1 - (ndc[1] + 1) * 0.5) * DISPLAY_HEIGHT)  # flip Y
+    return (x, y)
+
+def clipCheck(vertex):
+	w = vertex[3]
+	return (-w <= vertex[0] <= w) and (-w <= vertex[1] <= w) and (-w <= vertex[2] <= w)
+
+def drawWithPush(drawFunc, *transforms):
+    modelViewStack.push()
+    for t in transforms:
+        modelViewStack.multiplyMatrix(t)
+    drawFunc()
+    modelViewStack.pop()
+
+def drawObject(lines, color):
+	for s in lines:
+		start_h = np.array([s.start.x, s.start.y, s.start.z, 1.0])
+		end_h = np.array([s.end.x, s.end.y, s.end.z, 1.0])
+
+		start_cam = modelViewStack.top @ start_h
+		end_cam = modelViewStack.top @ end_h
+
+		start_clip = projectionStack.top @ start_cam
+		end_clip = projectionStack.top @ end_cam
+
+		if clipCheck(start_clip) and clipCheck(end_clip):
+			start_ndc = start_clip[:3] / start_clip[3]
+			end_ndc = end_clip[:3] / end_clip[3]
+
+			start_screen = ndcToScreen(start_ndc)
+			end_screen = ndcToScreen(end_ndc)
+
+			pygame.draw.line(screen, color, start_screen, end_screen)
+
+def displayStreet():
+    drawWithPush(lambda: drawObject(loadHouse(), RED))
+    drawWithPush(lambda: drawObject(loadHouse(), RED),
+                 translate(12, 0, 0))
+    drawWithPush(lambda: drawObject(loadHouse(), RED),
+                 translate(-12, 0, 0))
+    drawWithPush(lambda: drawObject(loadHouse(), RED),
+                 translate(-24, 0, 12),
+                 rotateY(90))
+    drawWithPush(lambda: drawObject(loadHouse(), RED), 
+                 translate(0, 0, 24),
+                 rotateY(180))
+    drawWithPush(lambda: drawObject(loadHouse(), RED), 
+                 translate(12, 0, 24),
+                 rotateY(180))
+    drawWithPush(lambda: drawObject(loadHouse(), RED), 
+                 translate(-12, 0, 24),
+                 rotateY(180))
+
+def displayCar():
+    drawWithPush(displayCarHelper,
+                 translate(totalTime/4, 0, 12))
+	
+def displayCarHelper():
+    """
+    Passed into the drawWithPush function from displayCar 
+    allowing it to draw the car and the tires with correct matrix stack order
+    """
+    drawObject(loadCar(), BLUE)
+    drawWithPush(lambda: drawObject(loadTire(), GREEN),
+                 translate(2, 0, 2),
+                 rotateZ(-totalTime * 1.3))
+    drawWithPush(lambda: drawObject(loadTire(), GREEN),
+                 translate(2, 0, -2),
+                 rotateZ(-totalTime * 1.3))
+    drawWithPush(lambda: drawObject(loadTire(), GREEN),
+                 translate(-2, 0, 2),
+                 rotateZ(-totalTime * 1.3))
+    drawWithPush(lambda: drawObject(loadTire(), GREEN),
+                 translate(-2, 0, -2),
+                 rotateZ(-totalTime * 1.3))
 # Initialize the game engine
 pygame.init()
  
@@ -197,9 +359,11 @@ WHITE = (255, 255, 255)
 BLUE =  (  0,   0, 255)
 GREEN = (  0, 255,   0)
 RED =   (255,   0,   0)
+DISPLAY_HEIGHT = 512
+DISPLAY_WIDTH = 512
 
 # Set the height and width of the screen
-size = [512, 512]
+size = [DISPLAY_HEIGHT, DISPLAY_WIDTH]
 screen = pygame.display.set_mode(size)
 
 pygame.display.set_caption("Shape Drawing")
@@ -209,14 +373,22 @@ done = False
 clock = pygame.time.Clock()
 start = Point(0.0,0.0)
 end = Point(0.0,0.0)
-linelist = loadHouse()
+
+cam = Camera(position=[-50, -5, -24], rotY=-70)
+projectionStack = MatrixStack()
+persMatrix  = perspective(45, DISPLAY_WIDTH/DISPLAY_HEIGHT, 0.1, 100)
+projectionStack.multiplyMatrix(persMatrix)
+modelViewStack = MatrixStack()
+totalTime = 0
 
 #Loop until the user clicks the close button.
 while not done:
  
 	# This limits the while loop to a max of 100 times per second.
 	# Leave this out and we will use all CPU we can.
-	clock.tick(100)
+	deltaMs = clock.tick(100)
+	deltaSecs = deltaMs / 10
+	totalTime += deltaSecs
 
 	# Clear the screen and set the screen background
 	screen.fill(BLACK)
@@ -230,15 +402,50 @@ while not done:
 			
 	pressed = pygame.key.get_pressed()
 
+	speed = 0.5
+	if pressed[pygame.K_w]:
+		cam.position[0] -= cam.forward[0] * speed
+		cam.position[1] -= cam.forward[1] * speed
+		cam.position[2] -= cam.forward[2] * speed
+	if pressed[pygame.K_s]:
+		cam.position[0] += cam.forward[0] * speed
+		cam.position[1] += cam.forward[1] * speed
+		cam.position[2] += cam.forward[2] * speed
 	if pressed[pygame.K_a]:
-		print("a is pressed")
+		cam.position[0] += cam.right[0] * speed
+		cam.position[1] += cam.right[1] * speed
+		cam.position[2] += cam.right[2] * speed
+	if pressed[pygame.K_d]:
+		cam.position[0] -= cam.right[0] * speed
+		cam.position[1] -= cam.right[1] * speed
+		cam.position[2] -= cam.right[2] * speed
+	if pressed[pygame.K_e]:
+		cam.rotY += 1
+	if pressed[pygame.K_q]:
+		cam.rotY -= 1
+    # added forward and backward tilt to move around scene better
+	if pressed[pygame.K_f]:
+		cam.position[0] += cam.up[0] * speed
+		cam.position[1] += cam.up[1] * speed
+		cam.position[2] += cam.up[2] * speed
+	if pressed[pygame.K_r]:
+		cam.position[0] -= cam.up[0] * speed
+		cam.position[1] -= cam.up[1] * speed
+		cam.position[2] -= cam.up[2] * speed
+	if pressed[pygame.K_h]:
+		cam.reset()
+		totalTime = 0
+        
 
 	#Viewer Code#
 	#####################################################################
 
-	for s in linelist:
-		#BOGUS DRAWING PARAMETERS SO YOU CAN SEE THE HOUSE WHEN YOU START UP
-		pygame.draw.line(screen, BLUE, (20*s.start.x+200, -20*s.start.y+200), (20*s.end.x+200, -20*s.end.y+200))
+	modelViewStack.loadIdentity()
+	modelViewStack.multiplyMatrix(rotateY(cam.rotY))
+	modelViewStack.multiplyMatrix(translate(cam.position[0], cam.position[1], cam.position[2]))
+
+	displayStreet()
+	displayCar()
 
 	# Go ahead and update the screen with what we've drawn.
 	# This MUST happen after all the other drawing commands.
