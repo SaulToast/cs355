@@ -319,7 +319,7 @@ def drawObject(lines, color):
 			start_screen = ndcToScreen(start_ndc)
 			end_screen = ndcToScreen(end_ndc)
 
-			pygame.draw.line(screen, color, start_screen, end_screen)
+		pygame.draw.line(screen, color, start_screen, end_screen)
 
 def displayStreet():
     drawWithPush(lambda: drawObject(loadHouse(), RED))
